@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace PCGuardianRemote;
 
@@ -37,10 +36,14 @@ internal sealed class TunnelManager : IDisposable
             return;
         }
 
-        if (config.HasTunnelCredentials)
-            StartNamedTunnel(config);
-        else
-            StartQuickTunnel(config.Port);
+        if (!config.HasTunnelCredentials)
+        {
+            ErrorMessage = "No tunnel credentials configured. Set TunnelId, TunnelSecret, and TunnelHostname in config.";
+            StatusChanged?.Invoke(ErrorMessage);
+            return;
+        }
+
+        StartNamedTunnel(config);
     }
 
     void StartNamedTunnel(AppConfig config)
@@ -111,45 +114,7 @@ internal sealed class TunnelManager : IDisposable
         _proc.BeginErrorReadLine();
     }
 
-    void StartQuickTunnel(int port)
-    {
-        StatusChanged?.Invoke("Starting quick tunnel (random URL)...");
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = _cloudflaredPath,
-            Arguments = $"tunnel --url http://localhost:{port} --no-autoupdate",
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-
-        _proc = Process.Start(psi);
-        if (_proc == null)
-        {
-            ErrorMessage = "Failed to start cloudflared";
-            StatusChanged?.Invoke(ErrorMessage);
-            return;
-        }
-
-        string? lastUrl = null;
-        _proc.ErrorDataReceived += (_, e) =>
-        {
-            if (string.IsNullOrEmpty(e.Data)) return;
-            Debug.WriteLine($"[Tunnel] {e.Data}");
-
-            var match = Regex.Match(e.Data, @"(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)");
-            if (match.Success && match.Value != lastUrl)
-            {
-                lastUrl = match.Value;
-                TunnelUrl = lastUrl;
-                UrlAssigned?.Invoke(TunnelUrl);
-                StatusChanged?.Invoke($"Connected: {TunnelUrl}");
-            }
-        };
-        _proc.BeginErrorReadLine();
-    }
+    // Quick tunnel removed — only named tunnels with fixed URLs are supported
 
     string? FindOrExtract()
     {
